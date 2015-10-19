@@ -5,7 +5,6 @@ import sys
 import swiftutil
 import tasks
 import time
-import json
 
 app = Flask(__name__)
 
@@ -18,13 +17,13 @@ def pronoun_count():
     for obj in obj_list:
         filename = obj['name']
         pcounttasks[filename] = (tasks.count_pronouns.delay(filename))
-    pcountresults = {}
-    for pctKey, pctVal in pcounttasks.iteritems():
-        while not pctVal.ready():
+    pcountresults = 
+    for pctEntry in pcounttasks:
+        while !pctEntry.value.ready():
             time.sleep(1)
-        pcountresults[pctKey] = pctVal.get()
+        pcountresults[pctEntry.key] = pctEntry.value.get()
     sc.close()
-    return json.dumps(pcountresults)
+    return pcountresults
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0',debug=True)
