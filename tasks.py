@@ -21,4 +21,7 @@ def gen_prime(x):
 
 @app.task
 def count_pronouns(filename, bucketname="tweets"):
-    return tweetutil.countpronounsintweetfile(swiftutil.bucketfilelinegen(swiftutil.getswiftconnection(), bucketname, filename))
+    sc = swiftutil.getswiftconnection()
+    result = tweetutil.countpronounsintweetfile(swiftutil.bucketfilelinegen(sc, bucketname, filename))
+    sc.close()
+    return result

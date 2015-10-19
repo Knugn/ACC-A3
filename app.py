@@ -21,7 +21,8 @@ def pronoun_count():
     for pctEntry in pcounttasks:
         while !pctEntry.value.ready():
             time.sleep(1)
-        pcountresults[pctEntry.key] = pctEntry.value.get()        
+        pcountresults[pctEntry.key] = pctEntry.value.get()
+    sc.close()
     return pcountresults
 
 if __name__ == '__main__':
