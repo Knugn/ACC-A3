@@ -26,4 +26,4 @@ def countpronounsintweetfile(linegen, ignoreretweets = True):
             assert(line == '')
             continue
         tweetcount += countpronouns(line, pcountdict, ignoreretweets)
-    return (linecount, tweetcount, pcountdict)
+    return {'line_count':linecount, 'ignore_retweets':ignoreretweets, 'tweet_count':tweetcount, 'pronoun_counts':pcountdict}
