@@ -13,13 +13,6 @@ workerconfig = {
 }
 n_worker_vms = 1
 n_celery_workers_per_vm = 4
-startceleryscript = """\
-#!bin/bash
-for i in {1..{0}}
-do
-    celery -A celerytasks.py -n one.%h &
-done
-""".format(n_celery_workers_per_vm)
 worker_name_prefix = 'RymanA3-worker'
 workers = []
 

@@ -3,3 +3,5 @@ BROKER_URL = 'amqp://'
 
 # default RabbitMQ backend
 CELERY_RESULT_BACKEND = 'amqp://'
+
+CELERY_IMPORTS = ("celerytasks")
