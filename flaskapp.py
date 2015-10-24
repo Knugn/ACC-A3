@@ -7,6 +7,9 @@ from celery import group
 import celerytasks
 import time
 import json
+import timeit
+from collections import Counter
+from operator import add
 
 flask = Flask(__name__)
 sc = swiftutil.getswiftconnection()
@@ -51,11 +54,22 @@ def count_pronouns(bucket_name='tweets', file_name=None):
     #return json.dumps(pcountresults)
 
 def count_pronouns_in_bucket(bucket_name):
+    t1 = timeit.default_timer()
     global sc
     (resp_header, obj_list) = sc.get_container(bucket_name)
     taskgroup = group(celerytasks.count_pronouns.s(obj['name'], bucket_name) for obj in obj_list)()
-    partialres = taskgroup.get()
-    return {'partial_results':partialres}
+    partialresults = taskgroup.get()
+    return {
+        'combined_results': {
+            'bucket':bucket_name,
+            'pronoun_counts':dict(reduce(lambda c, pc: c.update(pc) or c, (Counter(pr['pronoun_counts']) for pr in partialresults))),
+            'computation_time':reduce(add, (pr['computation_time'] for pr in partialresults)),
+            'line_count':reduce(add, (pr['line_count'] for pr in partialresults)),
+            'tweet_count':reduce(add, (pr['tweet_count'] for pr in partialresults))
+            },
+        'partial_results':partialresults,
+        'real_time_taken':timeit.default_timer()-t1
+    }
 
 #    pcounttasks = {}
 #    for obj in obj_list:
