@@ -1,10 +1,10 @@
 import os
 import novautil
 import paramiko
-#from celeryapp import celery
 import time
+from celeryapp import celery
 
-debug = True
+debug = False
 nc = novautil.getnovaclient()
 workerconfig = {
     'image' : nc.images.find(name='Ryman A3 Worker Core').id,
@@ -13,8 +13,7 @@ workerconfig = {
     'key_name' : 'rymanserverkey'#nc.keypairs.list().pop().name
     #'admin_pass' : os.environ['OS_PASSWORD']
 }
-#n_worker_vms = 1
-n_celery_workers_per_vm = 4
+n_celery_workers_per_vm = 2
 vm_name_prefix = 'RymanA3-worker'
 name_count = 0
 vms = []
@@ -55,7 +54,7 @@ def ssh_exec_check_failure(ssh, command):
             else:
                 print '\t  '+part
         for line in stdout.readlines():
-            print '\t'+line
+            print '\t'+line,
     failure = False
     first = True
     for line in stderr.readlines():
@@ -64,7 +63,7 @@ def ssh_exec_check_failure(ssh, command):
             print command
             first = False
             failure = True
-        print '\t'+line
+        print '\t'+line,
     return failure
 
 def start_celery_workers_remote(ssh): 
@@ -76,32 +75,18 @@ def start_celery_workers_remote(ssh):
         sftp.put('celeryconfigremote.py', 'celeryconfig.py')
         for file_name in ['celerytasks.py', 'celeryapp.py', 'swiftutil.py', 'tweetutil.py']:
             sftp.put(file_name, file_name)
-    print 'Copying environment variables for swift connection and broker connection'
+    #print 'Copying environment variables for swift connection and broker connection'
     # TODO: add broker url to environment variables and remove if from celeryconfig
+    envcmd = "env"
     for envvar in ['OS_USERNAME', 'OS_PASSWORD', 'OS_TENANT_NAME', 'OS_AUTH_URL']:
-        #(stdin, stdout, stderr) = ssh.exec_command("export {0}={1}".format(envvar, os.environ[envvar]))
-        #for line in stdout.readlines():
-        #    print line
-        #for line in stderr.readlines():
-        #    print line
-        #    failure = True
-        if ssh_exec_check_failure(ssh, "export {0}={1}".format(envvar, os.environ[envvar])):
-            print 'Failed to copy environment variable:',envvar
-            return False
-    if debug:
-        ssh_exec_check_failure(ssh, "printenv")
+        envcmd += " {0}={1}".format(envvar, os.environ[envvar])
     print 'Starting celery workers on remote machine with ssh', ssh
-    #(stdin, stdout, stderr) = ssh.exec_command("celery worker -A celerytasks.py -n c0.%h --app=celeryapp:celery")
-    #for line in stdout.readlines():
-    #    print line
-    #success = True
-    #or line in stderr.readlines():
-    #    print line
-    #    failure = True
-    #if failure:
-    if ssh_exec_check_failure(ssh, "celery worker -A celerytasks.py -n c0.%h --app=celeryapp:celery"):
-        print 'Failed to start celery workers on remote machine.'
-        return False
+    for i in xrange(n_celery_workers_per_vm):
+        if ssh_exec_check_failure(ssh, "{0} celery worker --hostname=c{1}.%h --app=celeryapp:celery --detach".format(envcmd, i)):
+            print 'Failed to start celery workers on remote machine.'
+            return False
+    #for i in xrange(n_celery_workers_per_vm):
+    #    ssh.exec_command("{0} celery worker -A celerytasks.py -n c{1}.%h --app=celeryapp:celery &".format(envcmd, i))
     return True
 
 def spawn_worker_vm(name=None):
@@ -135,12 +120,17 @@ def add_worker_vms(n=1):
         spawn_worker_vm()
     return
 
-#def remove_worker_vm(n=1): pass
 def clear_worker_vms():
     kill_worker_vms()
     global name_count
     name_count = 0
     return
+
+def stop_worker_vms():
+    stop_celery_workers_on_worker_vms()
+    kill_worker_vms()
+
+def stop_celery_workers_on_worker_vms(): pass
 
 def kill_worker_vms():
     for vm in list_worker_vms():
@@ -151,26 +141,11 @@ def list_worker_vms():
     global nc
     return filter(lambda serv: serv.name.startswith(vm_name_prefix), nc.servers.list())
 
-def spawnworkers(namegen, **kwargs):
-    for name in namegen:
-        w = nc.servers.create(name, **kwargs)
-        ip = w.networks.values()[0]
-        print "Created", w, "with ip", ip
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(ip, username='ubuntu', password = workerconfig['admin_pass'])
-        workers.append(w)
-    return workers
-
-def start():
-    spawnworkers(getworkernamegen(), **workerconfig)
-    return
-
-def stop():
-    celery.control.broadcast('shutdown') # shutdown all workers
-    for vm in vms:
-        vm.delete()
-    return
+#def stop():
+#    celery.control.broadcast('shutdown') # shutdown all workers
+#    for vm in vms:
+#        vm.delete()
+#    return
 
 #def get_vms():
 #    return vms
