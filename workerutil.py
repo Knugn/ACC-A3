@@ -13,7 +13,7 @@ workerconfig = {
     'key_name' : 'rymanserverkey'#nc.keypairs.list().pop().name
     #'admin_pass' : os.environ['OS_PASSWORD']
 }
-n_celery_workers_per_vm = 2
+#n_celery_workers_per_vm = 2
 vm_name_prefix = 'RymanA3-worker'
 name_count = 0
 vms = []
@@ -80,14 +80,40 @@ def start_celery_workers_remote(ssh):
     envcmd = "env"
     for envvar in ['OS_USERNAME', 'OS_PASSWORD', 'OS_TENANT_NAME', 'OS_AUTH_URL']:
         envcmd += " {0}={1}".format(envvar, os.environ[envvar])
-    print 'Starting celery workers on remote machine with ssh', ssh
-    for i in xrange(n_celery_workers_per_vm):
-        if ssh_exec_check_failure(ssh, "{0} celery worker --hostname=c{1}.%h --app=celeryapp:celery --detach".format(envcmd, i)):
-            print 'Failed to start celery workers on remote machine.'
-            return False
+    print 'Starting celery worker on remote machine with ssh', ssh
+    #for i in xrange(n_celery_workers_per_vm):
+    if ssh_exec_check_failure(ssh, "{0} celery worker --hostname=%h --app=celeryapp:celery --detach".format(envcmd)):
+        print 'Failed to start celery workers on remote machine.'
+        return False
     #for i in xrange(n_celery_workers_per_vm):
     #    ssh.exec_command("{0} celery worker -A celerytasks.py -n c{1}.%h --app=celeryapp:celery &".format(envcmd, i))
     return True
+
+def stop_celery_workers_remote(ssh, force=False):
+    cmd = "ps auxww | grep 'celery worker' | awk '{print $2}' | xargs kill"
+    if force:
+        cmd += " -9"
+    print 'Stopping celery workers on remote machine with ssh', ssh
+    if ssh_exec_check_failure(ssh, cmd):
+        print 'Failed to stop celery workers on remote machine.'
+        return False
+    return True
+
+def get_local_ip(vm):
+    return get_network(vm, 'ACC-Course-net')[0]['addr']
+
+def establish_worker_ssh(ssh, ip):
+    print 'Establishing ssh connection to VM with ip:', ip
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    while True:
+        try:
+            ssh.connect(ip, username='ubuntu', key_filename = 'rymanserverkey.pem', timeout=60)
+            break
+        except:
+            print 'ssh connection failed, trying again in 3 seconds...'
+            time.sleep(3)
+    print 'ssh connection established successfully'
+    return
 
 def spawn_worker_vm(name=None):
     global nc
@@ -96,20 +122,11 @@ def spawn_worker_vm(name=None):
     print 'name:', vm.name
     #vm_ip = vm.networks.values()[0]
     print 'Waiting for VM network ...'
-    vm_ip = get_network(vm, 'ACC-Course-net')[0]['addr']
+    vm_ip = get_local_ip(vm)
     print 'ip:' , vm_ip
-    print 'Establishing ssh connection to VM with ip:', vm_ip
     failmsg = ''
     with paramiko.SSHClient() as ssh:
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        while True:
-            try:
-                ssh.connect(vm_ip, username='ubuntu', key_filename = 'rymanserverkey.pem', timeout=60)
-                break
-            except:
-                print 'ssh connection failed, trying again in 3 seconds...'
-                time.sleep(3)
-        print 'ssh connection established successfully'
+        establish_worker_ssh(ssh, vm_ip)
         if not start_celery_workers_remote(ssh):
             failmsg = ', but failed to start celery workers'
     print 'Successfully spawned worker VM'+failmsg
@@ -121,19 +138,35 @@ def add_worker_vms(n=1):
     return
 
 def clear_worker_vms():
-    kill_worker_vms()
+    stop_worker_vms()
     global name_count
     name_count = 0
     return
 
 def stop_worker_vms():
-    stop_celery_workers_on_worker_vms()
-    kill_worker_vms()
+    for vm in list_worker_vms():
+        stop_worker_vm(vm)
+    return
 
-def stop_celery_workers_on_worker_vms(): pass
+def stop_worker_vm(vm, force=False):
+    print '-= Stopping worker VM =-'
+    print 'name:', vm.name
+    vm_ip = get_local_ip(vm)
+    print 'ip:', vm_ip
+    stop_celery_workers_on_worker_vm(vm_ip, force)
+    print 'Deleting worker vm', vm
+    vm.delete()
+    return
+
+def stop_celery_workers_on_worker_vm(vm_ip, force=False):
+    with paramiko.SSHClient() as ssh:
+        establish_worker_ssh(ssh, vm_ip)
+        stop_celery_workers_remote(ssh, force)
+    return
 
 def kill_worker_vms():
     for vm in list_worker_vms():
+        print 'Deleting worker vm', vm
         vm.delete()
     return
 
