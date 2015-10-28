@@ -1,4 +1,3 @@
-#!flask/bin/python
 from flask import Flask, jsonify, url_for
 import sys
 import swiftutil
